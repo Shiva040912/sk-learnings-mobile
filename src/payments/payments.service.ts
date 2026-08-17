@@ -55,6 +55,16 @@ export class PaymentsService {
     return `${year}-${month}`;
   }
 
+  private async getActivePaymentSetting() {
+    return this.paymentSettingModel
+      .findOne({
+        isActive: true,
+      })
+      .sort({
+        updatedAt: -1,
+      });
+  }
+
   async setFeeDueDate(
     feeDueDate: string,
   ) {
@@ -74,9 +84,7 @@ export class PaymentsService {
     }
 
     let setting =
-      await this.paymentSettingModel.findOne({
-        isActive: true,
-      });
+      await this.getActivePaymentSetting();
 
     let shouldResetStudents = false;
 
@@ -104,9 +112,23 @@ export class PaymentsService {
     if (!setting) {
       setting =
         new this.paymentSettingModel({
-          feeDueDate: parsedDate,
-          isActive: true,
-          lastReminderSentAt: null,
+          feeDueDate:
+            parsedDate,
+
+          upiId:
+            '',
+
+          receiverName:
+            '',
+
+          paymentPhone:
+            '',
+
+          isActive:
+            true,
+
+          lastReminderSentAt:
+            null,
         });
     } else {
       setting.feeDueDate =
@@ -131,10 +153,14 @@ export class PaymentsService {
         student.paymentStatus =
           'unpaid';
 
-        student.paidAmount = 0;
+        student.paidAmount =
+          0;
 
         student.pendingAmount =
           student.totalFee;
+
+        student.paymentMethod =
+          undefined;
 
         await student.save();
       }
@@ -161,17 +187,12 @@ export class PaymentsService {
 
   async getFeeDueDate() {
     const setting =
-      await this.paymentSettingModel
-        .findOne({
-          isActive: true,
-        })
-        .sort({
-          updatedAt: -1,
-        });
+      await this.getActivePaymentSetting();
 
     if (!setting) {
       return {
-        feeDueDate: null,
+        feeDueDate:
+          null,
       };
     }
 
@@ -181,11 +202,209 @@ export class PaymentsService {
     };
   }
 
+  async getPaymentSettings() {
+    const setting =
+      await this.getActivePaymentSetting();
+
+    if (!setting) {
+      return {
+        feeDueDate:
+          null,
+
+        upiId:
+          '',
+
+        receiverName:
+          '',
+
+        paymentPhone:
+          '',
+      };
+    }
+
+    return {
+      feeDueDate:
+        setting.feeDueDate,
+
+      upiId:
+        setting.upiId || '',
+
+      receiverName:
+        setting.receiverName || '',
+
+      paymentPhone:
+        setting.paymentPhone || '',
+    };
+  }
+
+  async updatePaymentSettings(
+    data: {
+      upiId?: string;
+      receiverName?: string;
+      paymentPhone?: string;
+    },
+  ) {
+    const upiId =
+      data.upiId?.trim();
+
+    const receiverName =
+      data.receiverName?.trim();
+
+    const paymentPhone =
+      data.paymentPhone
+        ?.replace(/\s+/g, '')
+        .trim();
+
+    if (
+      upiId !== undefined &&
+      upiId.length > 0 &&
+      !upiId.includes('@')
+    ) {
+      throw new BadRequestException(
+        'Please enter a valid UPI ID',
+      );
+    }
+
+    if (
+      paymentPhone !== undefined &&
+      paymentPhone.length > 0 &&
+      !/^[6-9]\d{9}$/.test(
+        paymentPhone,
+      )
+    ) {
+      throw new BadRequestException(
+        'Payment phone number must be a valid 10 digit Indian mobile number',
+      );
+    }
+
+    let setting =
+      await this.getActivePaymentSetting();
+
+    if (!setting) {
+      throw new BadRequestException(
+        'Please set the fee due date first',
+      );
+    }
+
+    if (upiId !== undefined) {
+      setting.upiId =
+        upiId;
+    }
+
+    if (
+      receiverName !== undefined
+    ) {
+      setting.receiverName =
+        receiverName;
+    }
+
+    if (
+      paymentPhone !== undefined
+    ) {
+      setting.paymentPhone =
+        paymentPhone;
+    }
+
+    await setting.save();
+
+    return {
+      message:
+        'Payment settings updated successfully',
+
+      paymentSettings: {
+        upiId:
+          setting.upiId || '',
+
+        receiverName:
+          setting.receiverName || '',
+
+        paymentPhone:
+          setting.paymentPhone || '',
+      },
+    };
+  }
+
+  async getPublicPaymentDetails(
+    studentId: string,
+  ) {
+    const student =
+      await this.studentModel.findById(
+        studentId,
+      );
+
+    if (
+      !student ||
+      !student.isActive
+    ) {
+      throw new NotFoundException(
+        'Student payment details not found',
+      );
+    }
+
+    const setting =
+      await this.getActivePaymentSetting();
+
+    if (!setting) {
+      throw new BadRequestException(
+        'Payment configuration is not available',
+      );
+    }
+
+    const hasUpiConfiguration =
+      Boolean(
+        setting.upiId &&
+        setting.receiverName,
+      );
+
+    return {
+      student: {
+        id:
+          student._id,
+
+        studentName:
+          student.studentName,
+
+        rollNo:
+          student.rollNo,
+
+        course:
+          student.course,
+
+        batch:
+          student.batch || '',
+
+        paymentStatus:
+          student.paymentStatus,
+
+        paymentAmount:
+          student.pendingAmount,
+      },
+
+      payment: {
+        feeDueDate:
+          setting.feeDueDate,
+
+        upiId:
+          setting.upiId || '',
+
+        receiverName:
+          setting.receiverName || '',
+
+        paymentPhone:
+          setting.paymentPhone || '',
+
+        isConfigured:
+          hasUpiConfiguration,
+      },
+    };
+  }
+
   async getPayments() {
     return this.paymentModel
       .find()
       .sort({
-        paymentDate: -1,
+        paymentDate:
+          -1,
       });
   }
 
@@ -208,17 +427,21 @@ export class PaymentsService {
 
   async sendDueReminders() {
     const setting =
-      await this.paymentSettingModel.findOne({
-        isActive: true,
-      });
+      await this.getActivePaymentSetting();
 
     if (!setting?.feeDueDate) {
       return {
         message:
           'Fee due date is not set',
-        totalEligible: 0,
-        sent: 0,
-        failed: 0,
+
+        totalEligible:
+          0,
+
+        sent:
+          0,
+
+        failed:
+          0,
       };
     }
 
@@ -248,9 +471,15 @@ export class PaymentsService {
       return {
         message:
           'Fee due date has not started yet',
-        totalEligible: 0,
-        sent: 0,
-        failed: 0,
+
+        totalEligible:
+          0,
+
+        sent:
+          0,
+
+        failed:
+          0,
       };
     }
 
@@ -260,10 +489,12 @@ export class PaymentsService {
           'unpaid',
 
         pendingAmount: {
-          $gt: 0,
+          $gt:
+            0,
         },
 
-        isActive: true,
+        isActive:
+          true,
       });
 
     if (
@@ -272,9 +503,15 @@ export class PaymentsService {
       return {
         message:
           'No unpaid students found',
-        totalEligible: 0,
-        sent: 0,
-        failed: 0,
+
+        totalEligible:
+          0,
+
+        sent:
+          0,
+
+        failed:
+          0,
       };
     }
 
@@ -300,7 +537,7 @@ export class PaymentsService {
             pendingAmount:
               student.pendingAmount,
 
-            paymentToken:
+            studentId:
               student._id.toString(),
           },
         );
@@ -331,16 +568,18 @@ export class PaymentsService {
 
   async sendAutomaticDueReminders() {
     const setting =
-      await this.paymentSettingModel.findOne({
-        isActive: true,
-      });
+      await this.getActivePaymentSetting();
 
     if (!setting?.feeDueDate) {
       return {
         message:
           'Fee due date is not set',
-        sent: 0,
-        failed: 0,
+
+        sent:
+          0,
+
+        failed:
+          0,
       };
     }
 
@@ -370,8 +609,12 @@ export class PaymentsService {
       return {
         message:
           'Fee due date has not started yet',
-        sent: 0,
-        failed: 0,
+
+        sent:
+          0,
+
+        failed:
+          0,
       };
     }
 
@@ -397,8 +640,12 @@ export class PaymentsService {
         return {
           message:
             'Automatic reminder already sent for this fee due date',
-          sent: 0,
-          failed: 0,
+
+          sent:
+            0,
+
+          failed:
+            0,
         };
       }
     }
@@ -412,7 +659,9 @@ export class PaymentsService {
     ) {
       return {
         ...result,
-        automatic: true,
+
+        automatic:
+          true,
       };
     }
 
@@ -423,30 +672,38 @@ export class PaymentsService {
 
     return {
       ...result,
-      automatic: true,
+
+      automatic:
+        true,
     };
   }
 
-  async createPayment(data: {
-    studentId: string;
-    studentName: string;
-    phone: string;
-    course: string;
-    amount: number;
-    paymentMethod:
-      | 'cash'
-      | 'bank'
-      | 'upi'
-      | 'qr';
-  }) {
+  async createPayment(
+    data: {
+      studentId:
+        string;
+
+      studentName:
+        string;
+
+      phone:
+        string;
+
+      course:
+        string;
+
+      amount:
+        number;
+
+      paymentMethod:
+        | 'cash'
+        | 'bank'
+        | 'upi'
+        | 'qr';
+    },
+  ) {
     const setting =
-      await this.paymentSettingModel
-        .findOne({
-          isActive: true,
-        })
-        .sort({
-          updatedAt: -1,
-        });
+      await this.getActivePaymentSetting();
 
     const billingDate =
       setting?.feeDueDate

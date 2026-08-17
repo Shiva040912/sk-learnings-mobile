@@ -17,6 +17,24 @@ export class PaymentSetting {
   feeDueDate!: Date;
 
   @Prop({
+    trim: true,
+    default: '',
+  })
+  upiId?: string;
+
+  @Prop({
+    trim: true,
+    default: '',
+  })
+  receiverName?: string;
+
+  @Prop({
+    trim: true,
+    default: '',
+  })
+  paymentPhone?: string;
+
+  @Prop({
     default: true,
   })
   isActive!: boolean;

@@ -12,39 +12,97 @@ import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('payments')
-@UseGuards(JwtAuthGuard)
 export class PaymentsController {
   constructor(
-    private readonly paymentsService: PaymentsService,
+    private readonly paymentsService:
+      PaymentsService,
   ) {}
 
+  // =========================
+  // PUBLIC PAYMENT ROUTE
+  // =========================
+
+  @Get('public/student/:studentId')
+  getPublicPaymentDetails(
+    @Param('studentId')
+    studentId: string,
+  ) {
+    return this.paymentsService.getPublicPaymentDetails(
+      studentId,
+    );
+  }
+
+  // =========================
+  // ADMIN PAYMENT SETTINGS
+  // =========================
+
+  @UseGuards(JwtAuthGuard)
+  @Get('settings')
+  getPaymentSettings() {
+    return this.paymentsService.getPaymentSettings();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings')
+  updatePaymentSettings(
+    @Body()
+    body: {
+      upiId?: string;
+      receiverName?: string;
+      paymentPhone?: string;
+    },
+  ) {
+    return this.paymentsService.updatePaymentSettings(
+      body,
+    );
+  }
+
+  // =========================
+  // FEE DUE DATE
+  // =========================
+
+  @UseGuards(JwtAuthGuard)
   @Put('due-date')
   setFeeDueDate(
-    @Body('feeDueDate') feeDueDate: string,
+    @Body('feeDueDate')
+    feeDueDate: string,
   ) {
     return this.paymentsService.setFeeDueDate(
       feeDueDate,
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('due-date')
   getFeeDueDate() {
     return this.paymentsService.getFeeDueDate();
   }
 
+  // =========================
+  // WHATSAPP REMINDER
+  // =========================
+
+  @UseGuards(JwtAuthGuard)
   @Post('send-reminders')
   sendDueReminders() {
     return this.paymentsService.sendDueReminders();
   }
 
+  // =========================
+  // PAYMENT HISTORY
+  // =========================
+
+  @UseGuards(JwtAuthGuard)
   @Get()
   getPayments() {
     return this.paymentsService.getPayments();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   getPaymentById(
-    @Param('id') id: string,
+    @Param('id')
+    id: string,
   ) {
     return this.paymentsService.getPaymentById(
       id,

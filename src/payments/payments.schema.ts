@@ -46,6 +46,12 @@ export class Payment {
 
   @Prop({
     required: true,
+    trim: true,
+  })
+  billingMonth!: string;
+
+  @Prop({
+    required: true,
     type: Date,
     default: Date.now,
   })
@@ -74,4 +80,6 @@ export class Payment {
 }
 
 export const PaymentSchema =
-  SchemaFactory.createForClass(Payment);
+  SchemaFactory.createForClass(
+    Payment,
+  );

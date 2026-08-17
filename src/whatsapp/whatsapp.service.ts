@@ -66,7 +66,7 @@ export class WhatsappService {
     studentName: string;
     course: string;
     pendingAmount: number;
-    paymentToken: string;
+    studentId: string;
   }) {
     const phone =
       this.normalizePhoneNumber(
@@ -119,11 +119,12 @@ export class WhatsappService {
                 type: 'button',
                 sub_type: 'url',
                 index: '0',
+
                 parameters: [
                   {
                     type: 'text',
                     text:
-                      data.paymentToken,
+                      data.studentId,
                   },
                 ],
               },
