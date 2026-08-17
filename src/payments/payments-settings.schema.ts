@@ -35,6 +35,12 @@ export class PaymentSetting {
   paymentPhone?: string;
 
   @Prop({
+    type: String,
+    default: '',
+  })
+  upiQrImage?: string;
+
+  @Prop({
     default: true,
   })
   isActive!: boolean;

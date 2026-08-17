@@ -112,23 +112,13 @@ export class PaymentsService {
     if (!setting) {
       setting =
         new this.paymentSettingModel({
-          feeDueDate:
-            parsedDate,
-
-          upiId:
-            '',
-
-          receiverName:
-            '',
-
-          paymentPhone:
-            '',
-
-          isActive:
-            true,
-
-          lastReminderSentAt:
-            null,
+          feeDueDate: parsedDate,
+          upiId: '',
+          receiverName: '',
+          paymentPhone: '',
+          upiQrImage: '',
+          isActive: true,
+          lastReminderSentAt: null,
         });
     } else {
       setting.feeDueDate =
@@ -219,6 +209,9 @@ export class PaymentsService {
 
         paymentPhone:
           '',
+
+        upiQrImage:
+          '',
       };
     }
 
@@ -234,6 +227,9 @@ export class PaymentsService {
 
       paymentPhone:
         setting.paymentPhone || '',
+
+      upiQrImage:
+        setting.upiQrImage || '',
     };
   }
 
@@ -242,6 +238,7 @@ export class PaymentsService {
       upiId?: string;
       receiverName?: string;
       paymentPhone?: string;
+      upiQrImage?: string;
     },
   ) {
     const upiId =
@@ -254,6 +251,9 @@ export class PaymentsService {
       data.paymentPhone
         ?.replace(/\s+/g, '')
         .trim();
+
+    const upiQrImage =
+      data.upiQrImage?.trim();
 
     if (
       upiId !== undefined &&
@@ -277,7 +277,18 @@ export class PaymentsService {
       );
     }
 
-    let setting =
+    if (
+      upiQrImage &&
+      !upiQrImage.startsWith(
+        'data:image/',
+      )
+    ) {
+      throw new BadRequestException(
+        'Please upload a valid QR image',
+      );
+    }
+
+    const setting =
       await this.getActivePaymentSetting();
 
     if (!setting) {
@@ -305,6 +316,13 @@ export class PaymentsService {
         paymentPhone;
     }
 
+    if (
+      upiQrImage !== undefined
+    ) {
+      setting.upiQrImage =
+        upiQrImage;
+    }
+
     await setting.save();
 
     return {
@@ -320,6 +338,9 @@ export class PaymentsService {
 
         paymentPhone:
           setting.paymentPhone || '',
+
+        upiQrImage:
+          setting.upiQrImage || '',
       },
     };
   }
@@ -392,6 +413,9 @@ export class PaymentsService {
 
         paymentPhone:
           setting.paymentPhone || '',
+
+        upiQrImage:
+          setting.upiQrImage || '',
 
         isConfigured:
           hasUpiConfiguration,

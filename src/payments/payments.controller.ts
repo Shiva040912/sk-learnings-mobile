@@ -18,10 +18,6 @@ export class PaymentsController {
       PaymentsService,
   ) {}
 
-  // =========================
-  // PUBLIC PAYMENT ROUTE
-  // =========================
-
   @Get('public/student/:studentId')
   getPublicPaymentDetails(
     @Param('studentId')
@@ -31,10 +27,6 @@ export class PaymentsController {
       studentId,
     );
   }
-
-  // =========================
-  // ADMIN PAYMENT SETTINGS
-  // =========================
 
   @UseGuards(JwtAuthGuard)
   @Get('settings')
@@ -50,16 +42,13 @@ export class PaymentsController {
       upiId?: string;
       receiverName?: string;
       paymentPhone?: string;
+      upiQrImage?: string;
     },
   ) {
     return this.paymentsService.updatePaymentSettings(
       body,
     );
   }
-
-  // =========================
-  // FEE DUE DATE
-  // =========================
 
   @UseGuards(JwtAuthGuard)
   @Put('due-date')
@@ -78,19 +67,11 @@ export class PaymentsController {
     return this.paymentsService.getFeeDueDate();
   }
 
-  // =========================
-  // WHATSAPP REMINDER
-  // =========================
-
   @UseGuards(JwtAuthGuard)
   @Post('send-reminders')
   sendDueReminders() {
     return this.paymentsService.sendDueReminders();
   }
-
-  // =========================
-  // PAYMENT HISTORY
-  // =========================
 
   @UseGuards(JwtAuthGuard)
   @Get()
