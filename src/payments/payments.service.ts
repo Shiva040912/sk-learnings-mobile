@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -41,18 +42,33 @@ export class PaymentsService {
       WhatsappService,
   ) {}
 
+  private getBillingMonth(
+    date: Date,
+  ) {
+    const year =
+      date.getUTCFullYear();
+
+    const month = String(
+      date.getUTCMonth() + 1,
+    ).padStart(2, '0');
+
+    return `${year}-${month}`;
+  }
+
   async setFeeDueDate(
     feeDueDate: string,
   ) {
     const parsedDate =
-      new Date(feeDueDate);
+      new Date(
+        `${feeDueDate}T00:00:00.000Z`,
+      );
 
     if (
       Number.isNaN(
         parsedDate.getTime(),
       )
     ) {
-      throw new Error(
+      throw new BadRequestException(
         'Invalid fee due date',
       );
     }
@@ -61,6 +77,29 @@ export class PaymentsService {
       await this.paymentSettingModel.findOne({
         isActive: true,
       });
+
+    let shouldResetStudents = false;
+
+    if (setting?.feeDueDate) {
+      const previousDate =
+        new Date(
+          setting.feeDueDate,
+        );
+
+      const previousBillingMonth =
+        this.getBillingMonth(
+          previousDate,
+        );
+
+      const newBillingMonth =
+        this.getBillingMonth(
+          parsedDate,
+        );
+
+      shouldResetStudents =
+        previousBillingMonth !==
+        newBillingMonth;
+    }
 
     if (!setting) {
       setting =
@@ -79,11 +118,44 @@ export class PaymentsService {
 
     await setting.save();
 
+    let resetStudentCount = 0;
+
+    if (shouldResetStudents) {
+      const students =
+        await this.studentModel.find();
+
+      for (
+        const student
+        of students
+      ) {
+        student.paymentStatus =
+          'unpaid';
+
+        student.paidAmount = 0;
+
+        student.pendingAmount =
+          student.totalFee;
+
+        await student.save();
+      }
+
+      resetStudentCount =
+        students.length;
+    }
+
     return {
       message:
-        'Fee due date updated successfully',
+        shouldResetStudents
+          ? 'New month fee date updated and all students reset to unpaid'
+          : 'Fee due date updated successfully',
+
       feeDueDate:
         setting.feeDueDate,
+
+      studentsReset:
+        shouldResetStudents,
+
+      resetStudentCount,
     };
   }
 
@@ -367,10 +439,33 @@ export class PaymentsService {
       | 'upi'
       | 'qr';
   }) {
+    const setting =
+      await this.paymentSettingModel
+        .findOne({
+          isActive: true,
+        })
+        .sort({
+          updatedAt: -1,
+        });
+
+    const billingDate =
+      setting?.feeDueDate
+        ? new Date(
+            setting.feeDueDate,
+          )
+        : new Date();
+
+    const billingMonth =
+      this.getBillingMonth(
+        billingDate,
+      );
+
     const existingPayment =
       await this.paymentModel.findOne({
         studentId:
           data.studentId,
+
+        billingMonth,
 
         paymentStatus:
           'paid',
@@ -396,6 +491,8 @@ export class PaymentsService {
 
         amount:
           data.amount,
+
+        billingMonth,
 
         paymentMethod:
           data.paymentMethod,
