@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
@@ -17,7 +18,6 @@ export class PaymentsController {
     private readonly paymentsService: PaymentsService,
   ) {}
 
-  
   @Put('due-date')
   setFeeDueDate(
     @Body('feeDueDate') feeDueDate: string,
@@ -27,21 +27,27 @@ export class PaymentsController {
     );
   }
 
-  
   @Get('due-date')
   getFeeDueDate() {
     return this.paymentsService.getFeeDueDate();
   }
 
-  
+  @Post('send-reminders')
+  sendDueReminders() {
+    return this.paymentsService.sendDueReminders();
+  }
+
   @Get()
   getPayments() {
     return this.paymentsService.getPayments();
   }
 
-
   @Get(':id')
-  getPaymentById(@Param('id') id: string) {
-    return this.paymentsService.getPaymentById(id);
+  getPaymentById(
+    @Param('id') id: string,
+  ) {
+    return this.paymentsService.getPaymentById(
+      id,
+    );
   }
 }

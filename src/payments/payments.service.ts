@@ -15,6 +15,13 @@ import {
   PaymentSettingDocument,
 } from './payments-settings.schema';
 
+import {
+  Student,
+  StudentDocument,
+} from '../student/students.schema';
+
+import { WhatsappService } from '../whatsapp/whatsapp.service';
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -25,6 +32,13 @@ export class PaymentsService {
     @InjectModel(PaymentSetting.name)
     private readonly paymentSettingModel:
       Model<PaymentSettingDocument>,
+
+    @InjectModel(Student.name)
+    private readonly studentModel:
+      Model<StudentDocument>,
+
+    private readonly whatsappService:
+      WhatsappService,
   ) {}
 
   async setFeeDueDate(
@@ -53,10 +67,14 @@ export class PaymentsService {
         new this.paymentSettingModel({
           feeDueDate: parsedDate,
           isActive: true,
+          lastReminderSentAt: null,
         });
     } else {
       setting.feeDueDate =
         parsedDate;
+
+      setting.lastReminderSentAt =
+        null;
     }
 
     await setting.save();
@@ -116,6 +134,227 @@ export class PaymentsService {
     return payment;
   }
 
+  async sendDueReminders() {
+    const setting =
+      await this.paymentSettingModel.findOne({
+        isActive: true,
+      });
+
+    if (!setting?.feeDueDate) {
+      return {
+        message:
+          'Fee due date is not set',
+        totalEligible: 0,
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    const now =
+      new Date();
+
+    const today =
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      );
+
+    const feeDueDate =
+      new Date(
+        setting.feeDueDate,
+      );
+
+    const dueDate =
+      new Date(
+        feeDueDate.getFullYear(),
+        feeDueDate.getMonth(),
+        feeDueDate.getDate(),
+      );
+
+    if (today < dueDate) {
+      return {
+        message:
+          'Fee due date has not started yet',
+        totalEligible: 0,
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    const unpaidStudents =
+      await this.studentModel.find({
+        paymentStatus:
+          'unpaid',
+
+        pendingAmount: {
+          $gt: 0,
+        },
+
+        isActive: true,
+      });
+
+    if (
+      unpaidStudents.length === 0
+    ) {
+      return {
+        message:
+          'No unpaid students found',
+        totalEligible: 0,
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    let sent = 0;
+    let failed = 0;
+
+    for (
+      const student
+      of unpaidStudents
+    ) {
+      try {
+        await this.whatsappService.sendFeeDueReminder(
+          {
+            phone:
+              student.phone,
+
+            studentName:
+              student.studentName,
+
+            course:
+              student.course,
+
+            pendingAmount:
+              student.pendingAmount,
+
+            paymentToken:
+              student._id.toString(),
+          },
+        );
+
+        sent++;
+      } catch (error) {
+        failed++;
+
+        console.error(
+          `Fee reminder failed for ${student.studentName}:`,
+          error,
+        );
+      }
+    }
+
+    return {
+      message:
+        'Fee reminders processed successfully',
+
+      totalEligible:
+        unpaidStudents.length,
+
+      sent,
+
+      failed,
+    };
+  }
+
+  async sendAutomaticDueReminders() {
+    const setting =
+      await this.paymentSettingModel.findOne({
+        isActive: true,
+      });
+
+    if (!setting?.feeDueDate) {
+      return {
+        message:
+          'Fee due date is not set',
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    const now =
+      new Date();
+
+    const today =
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      );
+
+    const feeDueDate =
+      new Date(
+        setting.feeDueDate,
+      );
+
+    const dueDate =
+      new Date(
+        feeDueDate.getFullYear(),
+        feeDueDate.getMonth(),
+        feeDueDate.getDate(),
+      );
+
+    if (today < dueDate) {
+      return {
+        message:
+          'Fee due date has not started yet',
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    if (
+      setting.lastReminderSentAt
+    ) {
+      const lastSent =
+        new Date(
+          setting.lastReminderSentAt,
+        );
+
+      const lastSentDate =
+        new Date(
+          lastSent.getFullYear(),
+          lastSent.getMonth(),
+          lastSent.getDate(),
+        );
+
+      if (
+        lastSentDate.getTime() >=
+        dueDate.getTime()
+      ) {
+        return {
+          message:
+            'Automatic reminder already sent for this fee due date',
+          sent: 0,
+          failed: 0,
+        };
+      }
+    }
+
+    const result =
+      await this.sendDueReminders();
+
+    if (
+      result.totalEligible === 0 ||
+      result.sent === 0
+    ) {
+      return {
+        ...result,
+        automatic: true,
+      };
+    }
+
+    setting.lastReminderSentAt =
+      new Date();
+
+    await setting.save();
+
+    return {
+      ...result,
+      automatic: true,
+    };
+  }
+
   async createPayment(data: {
     studentId: string;
     studentName: string;
@@ -132,6 +371,7 @@ export class PaymentsService {
       await this.paymentModel.findOne({
         studentId:
           data.studentId,
+
         paymentStatus:
           'paid',
       });
@@ -167,6 +407,32 @@ export class PaymentsService {
           new Date(),
       });
 
-    return payment.save();
+    const savedPayment =
+      await payment.save();
+
+    try {
+      await this.whatsappService.sendPaymentReceived(
+        {
+          phone:
+            data.phone,
+
+          studentName:
+            data.studentName,
+
+          course:
+            data.course,
+
+          amount:
+            data.amount,
+        },
+      );
+    } catch (error) {
+      console.error(
+        'Payment received WhatsApp message failed:',
+        error,
+      );
+    }
+
+    return savedPayment;
   }
 }

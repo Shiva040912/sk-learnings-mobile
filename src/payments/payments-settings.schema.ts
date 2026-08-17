@@ -1,4 +1,8 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import {
+  Prop,
+  Schema,
+  SchemaFactory,
+} from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
 export type PaymentSettingDocument =
@@ -16,7 +20,15 @@ export class PaymentSetting {
     default: true,
   })
   isActive!: boolean;
+
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  lastReminderSentAt?: Date | null;
 }
 
 export const PaymentSettingSchema =
-  SchemaFactory.createForClass(PaymentSetting);
+  SchemaFactory.createForClass(
+    PaymentSetting,
+  );
