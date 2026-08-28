@@ -69,8 +69,13 @@ export class PaymentsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('send-reminders')
-  sendDueReminders() {
-    return this.paymentsService.sendDueReminders();
+  sendDueReminders(
+    @Body('studentIds')
+    studentIds?: string[],
+  ) {
+    return this.paymentsService.sendDueReminders(
+      studentIds,
+    );
   }
 
   @UseGuards(JwtAuthGuard)

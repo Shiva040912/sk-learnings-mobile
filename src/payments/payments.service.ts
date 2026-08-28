@@ -449,7 +449,7 @@ export class PaymentsService {
     return payment;
   }
 
-  async sendDueReminders() {
+  async sendDueReminders(studentIds?: string[]) {
     const setting =
       await this.getActivePaymentSetting();
 
@@ -507,19 +507,27 @@ export class PaymentsService {
       };
     }
 
+    const reminderFilter: any = {
+      paymentStatus:
+        'unpaid',
+
+      pendingAmount: {
+        $gt:
+          0,
+      },
+
+      isActive:
+        true,
+    };
+
+    if (studentIds && studentIds.length > 0) {
+      reminderFilter._id = {
+        $in: studentIds,
+      };
+    }
+
     const unpaidStudents =
-      await this.studentModel.find({
-        paymentStatus:
-          'unpaid',
-
-        pendingAmount: {
-          $gt:
-            0,
-        },
-
-        isActive:
-          true,
-      });
+      await this.studentModel.find(reminderFilter);
 
     if (
       unpaidStudents.length === 0
