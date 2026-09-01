@@ -51,6 +51,19 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Put('reminder-dates')
+  updateReminderDates(
+    @Body()
+    body: {
+      feeDueDate?: string;
+      preventReminderDate?: string;
+      overdueReminderDate?: string;
+    },
+  ) {
+    return this.paymentsService.updateReminderDates(body);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Put('due-date')
   setFeeDueDate(
     @Body('feeDueDate')
@@ -75,6 +88,7 @@ export class PaymentsController {
   ) {
     return this.paymentsService.sendDueReminders(
       studentIds,
+      true,
     );
   }
 

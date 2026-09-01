@@ -201,6 +201,10 @@ export class PaymentsService {
         feeDueDate:
           null,
 
+        preventReminderDate: null,
+
+        overdueReminderDate: null,
+
         upiId:
           '',
 
@@ -219,6 +223,12 @@ export class PaymentsService {
       feeDueDate:
         setting.feeDueDate,
 
+      preventReminderDate:
+        setting.preventReminderDate || null,
+
+      overdueReminderDate:
+        setting.overdueReminderDate || null,
+
       upiId:
         setting.upiId || '',
 
@@ -230,6 +240,55 @@ export class PaymentsService {
 
       upiQrImage:
         setting.upiQrImage || '',
+    };
+  }
+
+  async updateReminderDates(data: {
+    feeDueDate?: string;
+    preventReminderDate?: string;
+    overdueReminderDate?: string;
+  }) {
+    if (!data.feeDueDate) {
+      throw new BadRequestException('Payment date is required');
+    }
+
+    const parseDate = (value?: string) => {
+      if (!value) return null;
+      const date = new Date(`${value}T00:00:00.000Z`);
+      if (Number.isNaN(date.getTime())) {
+        throw new BadRequestException('Please enter valid reminder dates');
+      }
+      return date;
+    };
+
+    const feeDueDate = parseDate(data.feeDueDate)!;
+    const preventReminderDate = parseDate(data.preventReminderDate);
+    const overdueReminderDate = parseDate(data.overdueReminderDate);
+
+    if (preventReminderDate && preventReminderDate >= feeDueDate) {
+      throw new BadRequestException('Prevent reminder date must be before the payment date');
+    }
+
+    if (overdueReminderDate && overdueReminderDate <= feeDueDate) {
+      throw new BadRequestException('Overdue reminder date must be after the payment date');
+    }
+
+    const dueDateResult = await this.setFeeDueDate(data.feeDueDate);
+    const setting = await this.getActivePaymentSetting();
+
+    if (!setting) throw new BadRequestException('Unable to save reminder dates');
+
+    setting.preventReminderDate = preventReminderDate;
+    setting.overdueReminderDate = overdueReminderDate;
+    setting.lastPreventReminderSentAt = null;
+    setting.lastOverdueReminderSentAt = null;
+    await setting.save();
+
+    return {
+      ...dueDateResult,
+      message: 'Reminder dates saved successfully',
+      preventReminderDate: setting.preventReminderDate,
+      overdueReminderDate: setting.overdueReminderDate,
     };
   }
 
@@ -449,7 +508,10 @@ export class PaymentsService {
     return payment;
   }
 
-  async sendDueReminders(studentIds?: string[]) {
+  async sendDueReminders(
+    studentIds?: string[],
+    skipDueDateCheck = false,
+  ) {
     const setting =
       await this.getActivePaymentSetting();
 
@@ -491,7 +553,7 @@ export class PaymentsService {
         feeDueDate.getDate(),
       );
 
-    if (today < dueDate) {
+    if (!skipDueDateCheck && today < dueDate) {
       return {
         message:
           'Fee due date has not started yet',
@@ -625,89 +687,24 @@ export class PaymentsService {
         now.getDate(),
       );
 
-    const feeDueDate =
-      new Date(
-        setting.feeDueDate,
-      );
+    const sameDay = (date?: Date | null) => date && new Date(date).toDateString() === today.toDateString();
+    const runs = [
+      { date: setting.preventReminderDate, last: 'lastPreventReminderSentAt' as const, label: 'Prevent reminder' },
+      { date: setting.overdueReminderDate, last: 'lastOverdueReminderSentAt' as const, label: 'Overdue reminder' },
+    ];
 
-    const dueDate =
-      new Date(
-        feeDueDate.getFullYear(),
-        feeDueDate.getMonth(),
-        feeDueDate.getDate(),
-      );
-
-    if (today < dueDate) {
-      return {
-        message:
-          'Fee due date has not started yet',
-
-        sent:
-          0,
-
-        failed:
-          0,
-      };
-    }
-
-    if (
-      setting.lastReminderSentAt
-    ) {
-      const lastSent =
-        new Date(
-          setting.lastReminderSentAt,
-        );
-
-      const lastSentDate =
-        new Date(
-          lastSent.getFullYear(),
-          lastSent.getMonth(),
-          lastSent.getDate(),
-        );
-
-      if (
-        lastSentDate.getTime() >=
-        dueDate.getTime()
-      ) {
-        return {
-          message:
-            'Automatic reminder already sent for this fee due date',
-
-          sent:
-            0,
-
-          failed:
-            0,
-        };
-      }
-    }
-
-    const result =
-      await this.sendDueReminders();
-
-    if (
-      result.totalEligible === 0 ||
-      result.sent === 0
-    ) {
-      return {
-        ...result,
-
-        automatic:
-          true,
-      };
-    }
-
-    setting.lastReminderSentAt =
-      new Date();
-
-    await setting.save();
-
-    return {
-      ...result,
-
-      automatic:
+    for (const run of runs) {
+      if (!sameDay(run.date) || sameDay(setting[run.last])) continue;
+      const result = await this.sendDueReminders(
+        undefined,
         true,
-    };
+      );
+      setting[run.last] = new Date();
+      await setting.save();
+      return { ...result, message: `${run.label} processed successfully`, automatic: true };
+    }
+
+    return { message: 'No reminder scheduled for today', sent: 0, failed: 0, automatic: true };
   }
 
   async createPayment(

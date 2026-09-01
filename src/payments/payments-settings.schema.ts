@@ -16,6 +16,12 @@ export class PaymentSetting {
   })
   feeDueDate!: Date;
 
+  @Prop({ type: Date, default: null })
+  preventReminderDate?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  overdueReminderDate?: Date | null;
+
   @Prop({
     trim: true,
     default: '',
@@ -50,6 +56,12 @@ export class PaymentSetting {
     default: null,
   })
   lastReminderSentAt?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  lastPreventReminderSentAt?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  lastOverdueReminderSentAt?: Date | null;
 }
 
 export const PaymentSettingSchema =

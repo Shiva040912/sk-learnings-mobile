@@ -1,11 +1,14 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { json } from 'express';
 
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app =
     await NestFactory.create(AppModule);
+
+  app.use(json({ limit: '4mb' }));
 
   app.enableCors({
     origin: (
@@ -15,6 +18,7 @@ async function bootstrap() {
       const allowedOrigins = [
         'http://localhost:5173',
         'https://sk-learning-frontend.vercel.app',
+        'http://localhost:5175'
       ];
 
       if (!origin) {
