@@ -508,9 +508,18 @@ export class PaymentsService {
     return payment;
   }
 
+  private formatDueDateForMessage(date: Date) {
+    return new Date(date).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+
   async sendDueReminders(
     studentIds?: string[],
     skipDueDateCheck = false,
+    reminderType: 'prevent' | 'overdue' = 'prevent',
   ) {
     const setting =
       await this.getActivePaymentSetting();
@@ -609,6 +618,8 @@ export class PaymentsService {
       };
     }
 
+    const formattedDueDate = this.formatDueDateForMessage(feeDueDate);
+
     let sent = 0;
     let failed = 0;
 
@@ -617,24 +628,42 @@ export class PaymentsService {
       of unpaidStudents
     ) {
       try {
-        await this.whatsappService.sendFeeDueReminder(
-          {
-            phone:
-              student.phone,
+        if (reminderType === 'overdue') {
+          await this.whatsappService.sendOverdueFeeReminder(
+            {
+              phone:
+                student.phone,
 
-            studentName:
-              student.studentName,
+              parentName:
+                student.parentName,
 
-            course:
-              student.course,
+              studentName:
+                student.studentName,
 
-            pendingAmount:
-              student.pendingAmount,
+              studentId:
+                student._id.toString(),
+            },
+          );
+        } else {
+          await this.whatsappService.sendFeeDueReminder(
+            {
+              phone:
+                student.phone,
 
-            studentId:
-              student._id.toString(),
-          },
-        );
+              parentName:
+                student.parentName,
+
+              studentName:
+                student.studentName,
+
+              dueDate:
+                formattedDueDate,
+
+              studentId:
+                student._id.toString(),
+            },
+          );
+        }
 
         sent++;
       } catch (error) {
@@ -689,8 +718,8 @@ export class PaymentsService {
 
     const sameDay = (date?: Date | null) => date && new Date(date).toDateString() === today.toDateString();
     const runs = [
-      { date: setting.preventReminderDate, last: 'lastPreventReminderSentAt' as const, label: 'Prevent reminder' },
-      { date: setting.overdueReminderDate, last: 'lastOverdueReminderSentAt' as const, label: 'Overdue reminder' },
+      { date: setting.preventReminderDate, last: 'lastPreventReminderSentAt' as const, label: 'Prevent reminder', type: 'prevent' as const },
+      { date: setting.overdueReminderDate, last: 'lastOverdueReminderSentAt' as const, label: 'Overdue reminder', type: 'overdue' as const },
     ];
 
     for (const run of runs) {
@@ -698,6 +727,7 @@ export class PaymentsService {
       const result = await this.sendDueReminders(
         undefined,
         true,
+        run.type,
       );
       setting[run.last] = new Date();
       await setting.save();
@@ -705,6 +735,98 @@ export class PaymentsService {
     }
 
     return { message: 'No reminder scheduled for today', sent: 0, failed: 0, automatic: true };
+  }
+
+  async sendCustomMessages(
+    studentIds: string[] | undefined,
+    audience: 'unpaid' | 'all' | undefined,
+    message: string,
+  ) {
+    const trimmedMessage =
+      message?.trim();
+
+    if (!trimmedMessage) {
+      throw new BadRequestException(
+        'Message text is required',
+      );
+    }
+
+    const recipientFilter: any = {
+      isActive:
+        true,
+    };
+
+    if (studentIds && studentIds.length > 0) {
+      recipientFilter._id = {
+        $in: studentIds,
+      };
+    } else if (audience === 'unpaid') {
+      recipientFilter.paymentStatus =
+        'unpaid';
+    }
+
+    const students =
+      await this.studentModel.find(recipientFilter);
+
+    if (students.length === 0) {
+      return {
+        message:
+          'No matching students found',
+
+        totalEligible:
+          0,
+
+        sent:
+          0,
+
+        failed:
+          0,
+      };
+    }
+
+    let sent = 0;
+    let failed = 0;
+
+    for (
+      const student
+      of students
+    ) {
+      try {
+        await this.whatsappService.sendCustomNotification(
+          {
+            phone:
+              student.phone,
+
+            parentName:
+              student.parentName,
+
+            message:
+              trimmedMessage,
+          },
+        );
+
+        sent++;
+      } catch (error) {
+        failed++;
+
+        console.error(
+          `Custom message failed for ${student.studentName}:`,
+          error,
+        );
+      }
+    }
+
+    return {
+      message:
+        'Custom messages processed successfully',
+
+      totalEligible:
+        students.length,
+
+      sent,
+
+      failed,
+    };
   }
 
   async createPayment(

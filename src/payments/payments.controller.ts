@@ -83,12 +83,33 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   @Post('send-reminders')
   sendDueReminders(
-    @Body('studentIds')
-    studentIds?: string[],
+    @Body()
+    body: {
+      studentIds?: string[];
+      messageType?: 'prevent' | 'overdue';
+    },
   ) {
     return this.paymentsService.sendDueReminders(
-      studentIds,
+      body.studentIds,
       true,
+      body.messageType || 'prevent',
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('send-custom-message')
+  sendCustomMessage(
+    @Body()
+    body: {
+      studentIds?: string[];
+      audience?: 'unpaid' | 'all';
+      message: string;
+    },
+  ) {
+    return this.paymentsService.sendCustomMessages(
+      body.studentIds,
+      body.audience,
+      body.message,
     );
   }
 
