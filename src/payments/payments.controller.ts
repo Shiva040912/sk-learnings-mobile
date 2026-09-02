@@ -97,23 +97,6 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('send-custom-message')
-  sendCustomMessage(
-    @Body()
-    body: {
-      studentIds?: string[];
-      audience?: 'unpaid' | 'all';
-      message: string;
-    },
-  ) {
-    return this.paymentsService.sendCustomMessages(
-      body.studentIds,
-      body.audience,
-      body.message,
-    );
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Get()
   getPayments() {
     return this.paymentsService.getPayments();

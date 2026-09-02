@@ -18,12 +18,7 @@ export class WhatsappController {
     private readonly configService: ConfigService,
   ) {}
 
-  /**
-   * Meta calls this endpoint once while verifying the webhook.
-   *
-   * Required environment variables:
-   * WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-secret-token
-   */
+  
   @Get('webhook')
   verifyWebhook(
     @Query('hub.mode') mode: string,
@@ -50,13 +45,7 @@ export class WhatsappController {
     return response.sendStatus(403);
   }
 
-  /**
-   * Meta sends message delivery status updates here.
-   *
-   * This logs:
-   * sent / delivered / read / failed
-   * and, for failed messages, the Meta error information.
-   */
+
   @Post('webhook')
   receiveWebhook(
     @Req() request: Request,
@@ -105,7 +94,7 @@ export class WhatsappController {
         }
       }
 
-      // Meta expects a quick 200 response.
+      
       return response.sendStatus(200);
     } catch (error) {
       this.logger.error(
@@ -113,8 +102,7 @@ export class WhatsappController {
         error instanceof Error ? error.stack : String(error),
       );
 
-      // Still acknowledge the webhook so Meta does not repeatedly retry
-      // malformed/non-critical payloads.
+      
       return response.sendStatus(200);
     }
   }

@@ -233,23 +233,4 @@ export class WhatsappService {
     );
   }
 
-  async sendCustomNotification(data: {
-    phone: string;
-    parentName: string;
-    message: string;
-  }) {
-    return this.sendTemplateMessage(
-      data.phone,
-      'sk_fee_account_update',
-      [
-        {
-          type: 'body',
-          parameters: [
-            { type: 'text', text: data.parentName },
-            { type: 'text', text: data.message },
-          ],
-        },
-      ],
-    );
-  }
 }
