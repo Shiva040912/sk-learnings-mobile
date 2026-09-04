@@ -6,6 +6,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
 import { UsersService } from '../users/users.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   async login(loginDto: LoginDto) {
@@ -45,6 +47,11 @@ export class AuthService {
 
     const accessToken = await this.jwtService.signAsync(payload);
 
+    const permissions =
+      this.permissionsService.effectivePermissionsFor(
+        user,
+      );
+
     return {
       message: 'Login successful',
       accessToken,
@@ -53,7 +60,26 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        permissions,
       },
+    };
+  }
+
+  async getEffectiveProfile(userId: string) {
+    const user =
+      await this.usersService.getUserById(userId);
+
+    const permissions =
+      this.permissionsService.effectivePermissionsFor(
+        user,
+      );
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      permissions,
     };
   }
 }

@@ -9,6 +9,8 @@ import {
 import { StudentsService } from './students.service';
 import { StudentsController } from './students.controller';
 import { PaymentsModule } from '../payments/payments.module';
+import { AcademicModule } from '../academic/academic.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { PaymentsModule } from '../payments/payments.module';
       },
     ]),
     PaymentsModule,
+    AcademicModule,
+    PermissionsModule,
   ],
   controllers: [StudentsController],
   providers: [StudentsService],

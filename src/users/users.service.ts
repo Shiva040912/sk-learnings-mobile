@@ -14,6 +14,10 @@ import {
 
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import {
+  buildDefaultTrainerPermissions,
+  sanitizePermissions,
+} from '../permissions/permissions.constants';
 
 @Injectable()
 export class UsersService {
@@ -66,6 +70,13 @@ export class UsersService {
         role:
           createUserDto.role,
         isActive: true,
+        permissions:
+          createUserDto.role === 'trainer'
+            ? sanitizePermissions(
+                createUserDto.permissions ??
+                  buildDefaultTrainerPermissions(),
+              )
+            : undefined,
       });
 
     const savedUser =
@@ -80,6 +91,7 @@ export class UsersService {
         name: savedUser.name,
         email: savedUser.email,
         role: savedUser.role,
+        permissions: savedUser.permissions,
       },
     };
   }
@@ -97,6 +109,7 @@ export class UsersService {
         name: user.name,
         email: user.email,
         role: user.role,
+        permissions: user.permissions,
       }),
     );
   }
@@ -121,6 +134,7 @@ export class UsersService {
       name: user.name,
       email: user.email,
       role: user.role,
+      permissions: user.permissions,
     };
   }
 
@@ -172,6 +186,33 @@ export class UsersService {
     }
 
     if (
+      updateUserDto.permissions ||
+      updateUserDto.role
+    ) {
+      if (user.role === 'trainer') {
+        const hasExisting =
+          user.permissions &&
+          typeof user.permissions ===
+            'object' &&
+          Object.keys(user.permissions)
+            .length > 0;
+
+        const currentRaw = hasExisting
+          ? user.permissions
+          : buildDefaultTrainerPermissions();
+
+        user.permissions =
+          sanitizePermissions({
+            ...currentRaw,
+            ...(updateUserDto.permissions ||
+              {}),
+          }) as any;
+      } else {
+        user.permissions = undefined;
+      }
+    }
+
+    if (
       updateUserDto.password
     ) {
       user.password =
@@ -193,6 +234,7 @@ export class UsersService {
         name: updatedUser.name,
         email: updatedUser.email,
         role: updatedUser.role,
+        permissions: updatedUser.permissions,
       },
     };
   }

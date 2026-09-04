@@ -77,6 +77,9 @@ export class Payment {
     default: 'paid',
   })
   paymentStatus!: 'paid';
+
+  @Prop({ default: '' })
+  paymentProofImage?: string;
 }
 
 export const PaymentSchema =

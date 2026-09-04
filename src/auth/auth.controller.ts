@@ -28,4 +28,15 @@ export class AuthController {
       user: req.user,
     };
   }
+
+  // Freshly resolves the caller's effective permissions from the database
+  // (not from the JWT) so an admin's edit to a trainer's permissions takes
+  // effect on the trainer's next call here without requiring a re-login.
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getMe(@Request() req: any) {
+    return this.authService.getEffectiveProfile(
+      req.user.userId,
+    );
+  }
 }

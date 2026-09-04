@@ -21,6 +21,7 @@ import { PaymentsService } from './payments.service';
 import { PaymentReminderScheduler } from './payment-reminder.scheduler';
 
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
       },
     ]),
     WhatsappModule,
+    PermissionsModule,
   ],
   controllers: [PaymentsController],
   providers: [

@@ -87,8 +87,8 @@ export class UpdateStudentDto {
   pendingAmount?: number;
 
   @IsOptional()
-  @IsIn(['unpaid', 'paid'])
-  paymentStatus?: 'unpaid' | 'paid';
+  @IsIn(['unpaid', 'partial', 'paid'])
+  paymentStatus?: 'unpaid' | 'partial' | 'paid';
 
   @IsOptional()
   @IsIn(['cash', 'bank', 'upi', 'qr'])

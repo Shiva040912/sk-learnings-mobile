@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { StudentsModule } from './student/students.module';
 import { AcademicModule } from './academic/academic.module';
 import { PaymentsModule } from './payments/payments.module';
+import { PermissionsModule } from './permissions/permissions.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { PaymentsModule } from './payments/payments.module';
 
     UsersModule,
     AuthModule,
+    PermissionsModule,
     StudentsModule,
     AcademicModule,
     PaymentsModule,

@@ -83,16 +83,22 @@ export class Student {
   pendingAmount!: number;
 
   @Prop({
-    enum: ['unpaid', 'paid'],
+    enum: ['unpaid', 'partial', 'paid'],
     default: 'unpaid',
   })
-  paymentStatus!: 'unpaid' | 'paid';
+  paymentStatus!: 'unpaid' | 'partial' | 'paid';
 
   @Prop({
     enum: ['cash', 'bank', 'upi', 'qr'],
     default: null,
   })
   paymentMethod?: 'cash' | 'bank' | 'upi' | 'qr';
+
+  @Prop({ default: '' })
+  paymentProofImage?: string;
+
+  @Prop({ type: Date, default: null })
+  paymentProofUploadedAt?: Date | null;
 
   @Prop({ default: true })
   isActive!: boolean;

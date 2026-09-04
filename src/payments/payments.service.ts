@@ -22,6 +22,7 @@ import {
 } from '../student/students.schema';
 
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { PermissionsService } from '../permissions/permissions.service';
 
 @Injectable()
 export class PaymentsService {
@@ -40,6 +41,9 @@ export class PaymentsService {
 
     private readonly whatsappService:
       WhatsappService,
+
+    private readonly permissionsService:
+      PermissionsService,
   ) {}
 
   private getBillingMonth(
@@ -458,6 +462,12 @@ export class PaymentsService {
 
         paymentAmount:
           student.pendingAmount,
+
+        paymentProofImage:
+          student.paymentProofImage || '',
+
+        paymentProofUploadedAt:
+          student.paymentProofUploadedAt || null,
       },
 
       payment: {
@@ -482,17 +492,114 @@ export class PaymentsService {
     };
   }
 
-  async getPayments() {
-    return this.paymentModel
-      .find()
-      .sort({
-        paymentDate:
-          -1,
-      });
+  async uploadPaymentProof(
+    studentId: string,
+    proofImage?: string,
+  ) {
+    const student =
+      await this.studentModel.findById(
+        studentId,
+      );
+
+    if (
+      !student ||
+      !student.isActive
+    ) {
+      throw new NotFoundException(
+        'Student payment details not found',
+      );
+    }
+
+    const trimmedImage =
+      proofImage?.trim() || '';
+
+    if (
+      trimmedImage &&
+      !trimmedImage.startsWith(
+        'data:image/',
+      )
+    ) {
+      throw new BadRequestException(
+        'Please upload a valid payment screenshot',
+      );
+    }
+
+    student.paymentProofImage =
+      trimmedImage;
+
+    student.paymentProofUploadedAt =
+      trimmedImage
+        ? new Date()
+        : null;
+
+    await student.save();
+
+    return {
+      message:
+        trimmedImage
+          ? 'Payment screenshot uploaded successfully'
+          : 'Payment screenshot removed successfully',
+
+      paymentProofImage:
+        student.paymentProofImage || '',
+
+      paymentProofUploadedAt:
+        student.paymentProofUploadedAt || null,
+    };
+  }
+
+  // `amount` (the per-transaction sum collected) is fee-sensitive data, so
+  // it's stripped for trainers without the payments.totalFee permission at
+  // the response boundary, same reasoning/pattern as students' omitFeeFields.
+  private omitAmount(
+    payment: PaymentDocument,
+    effective: Awaited<
+      ReturnType<
+        PermissionsService['effectivePermissionsForUserId']
+      >
+    >,
+  ) {
+    return this.permissionsService.pickAllowedFields(
+      payment,
+      effective,
+      'payments',
+      [
+        {
+          kind: 'columns',
+          key: 'totalFee',
+          fields: ['amount'],
+        },
+      ],
+    );
+  }
+
+  async getPayments(
+    role?: string,
+    userId?: string,
+  ) {
+    const payments =
+      await this.paymentModel
+        .find()
+        .sort({
+          paymentDate:
+            -1,
+        });
+
+    const effective =
+      await this.permissionsService.effectivePermissionsForUserId(
+        userId || '',
+        role,
+      );
+
+    return payments.map((payment) =>
+      this.omitAmount(payment, effective),
+    );
   }
 
   async getPaymentById(
     id: string,
+    role?: string,
+    userId?: string,
   ) {
     const payment =
       await this.paymentModel.findById(
@@ -505,7 +612,13 @@ export class PaymentsService {
       );
     }
 
-    return payment;
+    const effective =
+      await this.permissionsService.effectivePermissionsForUserId(
+        userId || '',
+        role,
+      );
+
+    return this.omitAmount(payment, effective);
   }
 
   private formatDueDateForMessage(date: Date) {
@@ -759,6 +872,9 @@ export class PaymentsService {
         | 'bank'
         | 'upi'
         | 'qr';
+
+      paymentProofImage?:
+        string;
     },
   ) {
     const setting =
@@ -818,6 +934,112 @@ export class PaymentsService {
 
         paymentDate:
           new Date(),
+
+        paymentProofImage:
+          data.paymentProofImage || '',
+      });
+
+    const savedPayment =
+      await payment.save();
+
+    try {
+      await this.whatsappService.sendPaymentReceived(
+        {
+          phone:
+            data.phone,
+
+          studentName:
+            data.studentName,
+
+          course:
+            data.course,
+
+          amount:
+            data.amount,
+        },
+      );
+    } catch (error) {
+      console.error(
+        'Payment received WhatsApp message failed:',
+        error,
+      );
+    }
+
+    return savedPayment;
+  }
+
+  async recordCollection(
+    data: {
+      studentId:
+        string;
+
+      studentName:
+        string;
+
+      phone:
+        string;
+
+      course:
+        string;
+
+      amount:
+        number;
+
+      paymentMethod:
+        | 'cash'
+        | 'bank'
+        | 'upi'
+        | 'qr';
+
+      paymentProofImage?:
+        string;
+    },
+  ) {
+    const setting =
+      await this.getActivePaymentSetting();
+
+    const billingDate =
+      setting?.feeDueDate
+        ? new Date(
+            setting.feeDueDate,
+          )
+        : new Date();
+
+    const billingMonth =
+      this.getBillingMonth(
+        billingDate,
+      );
+
+    const payment =
+      new this.paymentModel({
+        studentId:
+          data.studentId,
+
+        studentName:
+          data.studentName,
+
+        phone:
+          data.phone,
+
+        course:
+          data.course,
+
+        amount:
+          data.amount,
+
+        billingMonth,
+
+        paymentMethod:
+          data.paymentMethod,
+
+        paymentStatus:
+          'paid',
+
+        paymentDate:
+          new Date(),
+
+        paymentProofImage:
+          data.paymentProofImage || '',
       });
 
     const savedPayment =

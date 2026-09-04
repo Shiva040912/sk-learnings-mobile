@@ -5,11 +5,14 @@ import {
   Param,
   Post,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../permissions/permissions.guard';
+import { RequirePageAccess } from '../permissions/permissions.decorator';
 
 @Controller('payments')
 export class PaymentsController {
@@ -25,6 +28,20 @@ export class PaymentsController {
   ) {
     return this.paymentsService.getPublicPaymentDetails(
       studentId,
+    );
+  }
+
+  @Put('public/student/:studentId/proof')
+  uploadPaymentProof(
+    @Param('studentId')
+    studentId: string,
+
+    @Body('proofImage')
+    proofImage: string,
+  ) {
+    return this.paymentsService.uploadPaymentProof(
+      studentId,
+      proofImage,
     );
   }
 
@@ -96,20 +113,28 @@ export class PaymentsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePageAccess('payments')
   @Get()
-  getPayments() {
-    return this.paymentsService.getPayments();
+  getPayments(@Req() req: any) {
+    return this.paymentsService.getPayments(
+      req.user?.role,
+      req.user?.userId,
+    );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePageAccess('payments')
   @Get(':id')
   getPaymentById(
+    @Req() req: any,
     @Param('id')
     id: string,
   ) {
     return this.paymentsService.getPaymentById(
       id,
+      req.user?.role,
+      req.user?.userId,
     );
   }
 }
