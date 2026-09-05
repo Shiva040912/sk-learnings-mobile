@@ -15,8 +15,7 @@ export interface BulkUploadColumn {
     | 'idproof'
     | 'batch'
     | 'schoolName'
-    | 'address'
-    | 'totalFee';
+    | 'address';
   required: boolean;
 }
 
@@ -32,7 +31,6 @@ export const BULK_UPLOAD_COLUMNS: BulkUploadColumn[] = [
   { header: 'Batch', field: 'batch', required: false },
   { header: 'School Name', field: 'schoolName', required: false },
   { header: 'Address', field: 'address', required: false },
-  { header: 'Total Fee *', field: 'totalFee', required: true },
 ];
 
 export const BULK_UPLOAD_EXAMPLE_ROWS: Record<string, string | number>[] = [
@@ -48,7 +46,6 @@ export const BULK_UPLOAD_EXAMPLE_ROWS: Record<string, string | number>[] = [
     batch: 'Morning — 10:00 AM - 1:00 PM',
     schoolName: 'St. Xavier School',
     address: '12, Gandhi Street, Chennai',
-    totalFee: 40000,
   },
   {
     studentName: 'Divya Ramesh',
@@ -62,7 +59,6 @@ export const BULK_UPLOAD_EXAMPLE_ROWS: Record<string, string | number>[] = [
     batch: '',
     schoolName: '',
     address: '',
-    totalFee: 35000,
   },
 ];
 
@@ -70,7 +66,7 @@ export const BULK_UPLOAD_INSTRUCTIONS: string[][] = [
   ['SK Learnings — Bulk Student Upload Instructions'],
   [''],
   ['1. Required fields (must not be left blank):'],
-  ['   Student Name, Roll No, Parent Name, Phone, Course, Aadhaar Number, Total Fee'],
+  ['   Student Name, Roll No, Parent Name, Phone, Course, Aadhaar Number'],
   [''],
   ['2. Optional fields:'],
   ['   Alternate Phone, Email, Batch, School Name, Address'],
@@ -79,10 +75,9 @@ export const BULK_UPLOAD_INSTRUCTIONS: string[][] = [
   ['   Phone / Alternate Phone : 10 digits starting with 6-9, written as "98765 43210"'],
   ['   Aadhaar Number          : 12 digits written as "1234 5678 9012"'],
   ['   Email                   : a valid email address, e.g. name@example.com'],
-  ['   Total Fee               : a number greater than 0, e.g. 40000'],
   [''],
-  ['4. Date format:'],
-  ['   This template has no date fields — payment dates are set later from the Payments page.'],
+  ['4. Fees are not part of this upload — generate each student\'s fee from the Payments'],
+  ['   page after importing them.'],
   [''],
   ['5. Course and Batch must exactly match a course/batch already configured on the website'],
   ['   (Settings > Academic). See the "Course & Batch Options" sheet in this file for the exact,'],

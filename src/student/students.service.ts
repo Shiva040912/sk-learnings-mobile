@@ -308,15 +308,9 @@ export class StudentsService {
       idproof:
         createStudentDto.idproof.trim(),
 
-      paidAmount: 0,
-
-      pendingAmount:
-        createStudentDto.totalFee,
-
-      paymentStatus: 'unpaid',
-
-      paymentMethod: undefined,
-
+      // No fee fields set here at all — a new student starts with no fee
+      // cycle ("+" on the Payments page). Fees are only ever created via
+      // PaymentsService.generateFeeCycle(), from the Payments page.
       isActive: true,
     });
 
@@ -343,7 +337,7 @@ export class StudentsService {
   }
 
   // Fee amounts (totalFee/paidAmount/pendingAmount) must never reach a
-  // caller without the students.feeInfo permission — stripped here, at the
+  // caller without the global `fees` permission — stripped here, at the
   // response boundary, rather than relying on the frontend to just not
   // render them. Driven by PermissionsService so admins (always full-access)
   // and trainers (per-trainer configured) both go through one code path.
@@ -357,8 +351,8 @@ export class StudentsService {
       'students',
       [
         {
-          kind: 'sections',
-          key: 'feeInfo',
+          kind: 'global',
+          key: 'fees',
           fields: [
             'totalFee',
             'paidAmount',
@@ -387,6 +381,71 @@ export class StudentsService {
     );
   }
 
+  // The Payments page needs the same underlying student records as the
+  // Students page (name, fee numbers, proof, status...), but Payments and
+  // Students are independent page permissions — a Trainer granted only
+  // Payments access must not be blocked from loading it just because they
+  // don't also have Students page access, and must not see fields
+  // (address, idproof, parentName, ...) that only the Students page's own
+  // permissions are meant to gate. This projects down to exactly what
+  // Payment.jsx's buildPaymentRow reads before applying the same
+  // fee-stripping as findAllForRole.
+  private toPaymentsProjection(
+    student: StudentDocument,
+  ) {
+    return {
+      _id: student._id,
+      studentName: student.studentName,
+      rollNo: student.rollNo,
+      course: student.course,
+      batch: student.batch,
+      phone: student.phone,
+      isActive: student.isActive,
+      paymentStatus: student.paymentStatus,
+      paymentMethod: student.paymentMethod,
+      paymentProofImage: student.paymentProofImage,
+      paymentProofUploadedAt:
+        student.paymentProofUploadedAt,
+      totalFee: student.totalFee,
+      paidAmount: student.paidAmount,
+      pendingAmount: student.pendingAmount,
+      updatedAt: (student as any).updatedAt,
+    };
+  }
+
+  async findAllForPaymentsRole(
+    role?: string,
+    userId?: string,
+  ) {
+    const students =
+      await this.findAll();
+
+    const effective =
+      await this.permissionsService.effectivePermissionsForUserId(
+        userId || '',
+        role,
+      );
+
+    return students.map((student) =>
+      this.permissionsService.pickAllowedFields(
+        this.toPaymentsProjection(student),
+        effective,
+        'students',
+        [
+          {
+            kind: 'global',
+            key: 'fees',
+            fields: [
+              'totalFee',
+              'paidAmount',
+              'pendingAmount',
+            ],
+          },
+        ],
+      ),
+    );
+  }
+
   async findOneForRole(
     id: string,
     role?: string,
@@ -407,6 +466,12 @@ export class StudentsService {
     );
   }
 
+  // Identity/contact-detail edits only — fees are never touched here.
+  // Editing a student can no longer adjust totalFee/paidAmount/
+  // pendingAmount/paymentStatus in any way; the only way to change a
+  // student's fee is PaymentsService.generateFeeCycle() (a brand new fee
+  // cycle) or collectFeeCyclePayment() (paying down the active one), both
+  // driven from the Payments page's Status column, never from here.
   async update(
     id: string,
     updateStudentDto: UpdateStudentDto,
@@ -414,15 +479,9 @@ export class StudentsService {
     const student =
       await this.findOne(id);
 
-    const previousPaymentStatus =
-      student.paymentStatus;
-
-    const {
-      paymentMethod,
-      paidAmount,
-      pendingAmount,
-      ...studentUpdateData
-    } = updateStudentDto;
+    const studentUpdateData = {
+      ...updateStudentDto,
+    };
 
     const finalParentName =
       studentUpdateData.parentName ??
@@ -469,36 +528,6 @@ export class StudentsService {
       },
       id,
     );
-
-    const requestedPaymentStatus =
-      updateStudentDto.paymentStatus;
-
-    const isChangingToPaid =
-      previousPaymentStatus !== 'paid' &&
-      requestedPaymentStatus === 'paid';
-
-    if (
-      isChangingToPaid &&
-      !paymentMethod
-    ) {
-      throw new BadRequestException(
-        'Payment method is required when marking student as paid',
-      );
-    }
-
-    if (
-      paymentMethod &&
-      ![
-        'cash',
-        'bank',
-        'upi',
-        'qr',
-      ].includes(paymentMethod)
-    ) {
-      throw new BadRequestException(
-        'Invalid payment method',
-      );
-    }
 
     if (
       studentUpdateData.studentName
@@ -575,82 +604,12 @@ export class StudentsService {
       cleanStudentUpdateData,
     );
 
-    if (requestedPaymentStatus === 'paid') {
-      student.paidAmount =
-        student.totalFee;
-
-      if (paymentMethod) {
-        student.paymentMethod =
-          paymentMethod;
-      }
-    } else if (
-      requestedPaymentStatus === 'unpaid'
-    ) {
-      student.paidAmount = 0;
-
-      student.paymentMethod =
-        undefined;
-    }
-
-    // A generic edit (e.g. editing name/phone/totalFee) does not
-    // touch paymentStatus at all, so paidAmount is left as-is above
-    // and payment fields are simply re-derived from it below —
-    // this keeps a 'partial' balance intact across unrelated edits
-    // and keeps pendingAmount in sync if totalFee itself changes.
-    student.paidAmount = Math.min(
-      Math.max(student.paidAmount || 0, 0),
-      student.totalFee,
-    );
-
-    student.pendingAmount = Math.max(
-      0,
-      student.totalFee - student.paidAmount,
-    );
-
-    student.paymentStatus =
-      student.paidAmount <= 0
-        ? 'unpaid'
-        : student.paidAmount >=
-            student.totalFee
-          ? 'paid'
-          : 'partial';
-
-    const updatedStudent =
-      await student.save();
-
-    if (isChangingToPaid) {
-      await this.paymentsService.createPayment({
-        studentId:
-          updatedStudent._id.toString(),
-
-        studentName:
-          updatedStudent.studentName,
-
-        phone:
-          updatedStudent.phone,
-
-        course:
-          updatedStudent.course,
-
-        amount:
-          updatedStudent.totalFee,
-
-        paymentMethod:
-          paymentMethod as
-            | 'cash'
-            | 'bank'
-            | 'upi'
-            | 'qr',
-
-        paymentProofImage:
-          updatedStudent.paymentProofImage ||
-          undefined,
-      });
-    }
-
-    return updatedStudent;
+    return student.save();
   }
 
+  // Thin delegate — all fee-cycle math/validation lives in
+  // PaymentsService.collectFeeCyclePayment() (pays down the active cycle
+  // only; rejects if there's no active cycle or it's already fully paid).
   async collectPayment(
     id: string,
     amount: number,
@@ -662,107 +621,13 @@ export class StudentsService {
     role?: string,
     userId?: string,
   ) {
-    const student =
-      await this.findOne(id);
-
-    const collectAmount =
-      Number(amount);
-
-    if (
-      !Number.isFinite(
-        collectAmount,
-      ) ||
-      collectAmount <= 0
-    ) {
-      throw new BadRequestException(
-        'Enter a valid amount to collect',
-      );
-    }
-
-    if (
-      paymentMethod &&
-      ![
-        'cash',
-        'bank',
-        'upi',
-        'qr',
-      ].includes(paymentMethod)
-    ) {
-      throw new BadRequestException(
-        'Invalid payment method',
-      );
-    }
-
-    const currentPending = Math.max(
-      0,
-      student.totalFee -
-        (student.paidAmount || 0),
-    );
-
-    if (currentPending <= 0) {
-      throw new BadRequestException(
-        'This student has already paid the full fee',
-      );
-    }
-
-    if (collectAmount > currentPending) {
-      throw new BadRequestException(
-        role === 'admin'
-          ? `Amount exceeds the pending balance of ₹${currentPending}`
-          : 'Amount exceeds the pending balance for this student',
-      );
-    }
-
-    student.paidAmount =
-      (student.paidAmount || 0) +
-      collectAmount;
-
-    student.pendingAmount = Math.max(
-      0,
-      student.totalFee -
-        student.paidAmount,
-    );
-
-    student.paymentStatus =
-      student.paidAmount >=
-      student.totalFee
-        ? 'paid'
-        : 'partial';
-
-    if (paymentMethod) {
-      student.paymentMethod =
-        paymentMethod;
-    }
-
     const updatedStudent =
-      await student.save();
-
-    await this.paymentsService.recordCollection(
-      {
-        studentId:
-          updatedStudent._id.toString(),
-
-        studentName:
-          updatedStudent.studentName,
-
-        phone:
-          updatedStudent.phone,
-
-        course:
-          updatedStudent.course,
-
-        amount: collectAmount,
-
-        paymentMethod:
-          paymentMethod ||
-          updatedStudent.paymentMethod ||
-          'upi',
-
-        paymentProofImage:
-          updatedStudent.paymentProofImage ||
-          undefined,
-      },
-    );
+      await this.paymentsService.collectFeeCyclePayment(
+        id,
+        amount,
+        paymentMethod,
+        role,
+      );
 
     const effective =
       await this.permissionsService.effectivePermissionsForUserId(
@@ -774,6 +639,106 @@ export class StudentsService {
       updatedStudent,
       effective,
     );
+  }
+
+  // Starts a brand new fee cycle (see PaymentsService.generateFeeCycle for
+  // the "must be fully paid first" enforcement) — the only way a student's
+  // fee is set once a cycle is already fully paid. While the active cycle
+  // is still unpaid/partial, editFeeCycleAmount below corrects it in place
+  // instead.
+  async generateFeeCycle(
+    id: string,
+    totalFee: number,
+    role?: string,
+    userId?: string,
+  ) {
+    const updatedStudent =
+      await this.paymentsService.generateFeeCycle(
+        id,
+        totalFee,
+      );
+
+    const effective =
+      await this.permissionsService.effectivePermissionsForUserId(
+        userId || '',
+        role,
+      );
+
+    return this.omitFeeFields(
+      updatedStudent,
+      effective,
+    );
+  }
+
+  // Thin delegate — see PaymentsService.editFeeCycleAmount for the
+  // "must not be fully paid yet" enforcement.
+  async editFeeCycleAmount(
+    id: string,
+    totalFee: number,
+    role?: string,
+    userId?: string,
+  ) {
+    const updatedStudent =
+      await this.paymentsService.editFeeCycleAmount(
+        id,
+        totalFee,
+      );
+
+    const effective =
+      await this.permissionsService.effectivePermissionsForUserId(
+        userId || '',
+        role,
+      );
+
+    return this.omitFeeFields(
+      updatedStudent,
+      effective,
+    );
+  }
+
+  // Every fee cycle this student has ever had, each with only its own
+  // payment history — for the Payments page's "Fee Collection History"
+  // panel.
+  async getFeeCycles(
+    id: string,
+    role?: string,
+    userId?: string,
+  ) {
+    await this.findOne(id);
+
+    const feeCycles =
+      await this.paymentsService.getFeeCyclesWithHistory(
+        id,
+      );
+
+    const effective =
+      await this.permissionsService.effectivePermissionsForUserId(
+        userId || '',
+        role,
+      );
+
+    if (
+      this.permissionsService.hasGlobalPermission(
+        effective,
+        'fees',
+      )
+    ) {
+      return feeCycles;
+    }
+
+    return feeCycles.map((feeCycle) => ({
+      _id: feeCycle._id,
+      cycleNumber: feeCycle.cycleNumber,
+      status: feeCycle.status,
+      payments: feeCycle.payments.map(
+        (payment) => ({
+          _id: payment._id,
+          paymentMethod: payment.paymentMethod,
+          paymentProofImage: payment.paymentProofImage,
+          paymentDate: payment.paymentDate,
+        }),
+      ),
+    }));
   }
 
   async generateBulkUploadTemplate(): Promise<Buffer> {
@@ -999,12 +964,6 @@ export class StudentsService {
         raw.schoolName,
       ),
       address: asOptionalString(raw.address),
-      totalFee:
-        raw.totalFee === '' ||
-        raw.totalFee === undefined ||
-        raw.totalFee === null
-          ? undefined
-          : Number(raw.totalFee),
     };
   }
 

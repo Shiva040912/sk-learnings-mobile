@@ -1,11 +1,9 @@
 import {
   IsEmail,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   Matches,
-  Min,
 } from 'class-validator';
 
 export class CreateStudentDto {
@@ -66,8 +64,4 @@ export class CreateStudentDto {
   @IsOptional()
   @IsString()
   address?: string;
-
-  @IsNumber()
-  @Min(0)
-  totalFee!: number;
 }

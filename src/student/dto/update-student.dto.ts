@@ -1,12 +1,9 @@
 import {
   IsBoolean,
   IsEmail,
-  IsIn,
-  IsNumber,
   IsOptional,
   IsString,
   Matches,
-  Min,
 } from 'class-validator';
 
 export class UpdateStudentDto {
@@ -70,29 +67,6 @@ export class UpdateStudentDto {
   @IsOptional()
   @IsString()
   address?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  totalFee?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  paidAmount?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  pendingAmount?: number;
-
-  @IsOptional()
-  @IsIn(['unpaid', 'partial', 'paid'])
-  paymentStatus?: 'unpaid' | 'partial' | 'paid';
-
-  @IsOptional()
-  @IsIn(['cash', 'bank', 'upi', 'qr'])
-  paymentMethod?: 'cash' | 'bank' | 'upi' | 'qr';
 
   @IsOptional()
   @IsBoolean()

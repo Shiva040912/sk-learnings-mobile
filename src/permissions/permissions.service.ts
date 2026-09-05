@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 
 import { UsersService } from '../users/users.service';
 import {
+  GLOBAL_PERMISSIONS,
   PERMISSION_PAGES,
+  GlobalKey,
   PageKey,
   PermissionKind,
   PermissionsMap,
@@ -12,7 +14,9 @@ import {
 } from './permissions.constants';
 
 export interface FieldGate {
-  kind: PermissionKind;
+  // 'global' gates on a top-level flag (e.g. `fees`) instead of a
+  // page-scoped actions/columns/sections entry.
+  kind: PermissionKind | 'global';
   key: string;
   fields: string[];
 }
@@ -24,7 +28,17 @@ export class PermissionsService {
   ) {}
 
   getCatalog() {
-    return PERMISSION_PAGES;
+    return {
+      pages: PERMISSION_PAGES,
+      global: GLOBAL_PERMISSIONS,
+    };
+  }
+
+  hasGlobalPermission(
+    effective: PermissionsMap,
+    key: GlobalKey,
+  ): boolean {
+    return effective[key] === true;
   }
 
   // Admins are always full-access and never persist a permissions document
@@ -110,8 +124,10 @@ export class PermissionsService {
 
     for (const gate of gates) {
       const allowed =
-        effective[page]?.[gate.kind]?.[gate.key] ===
-        true;
+        gate.kind === 'global'
+          ? effective[gate.key as GlobalKey] === true
+          : effective[page]?.[gate.kind]?.[gate.key] ===
+            true;
 
       if (!allowed) {
         for (const field of gate.fields) {

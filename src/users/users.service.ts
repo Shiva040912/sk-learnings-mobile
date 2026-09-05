@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -35,9 +36,34 @@ export class UsersService {
     });
   }
 
+  // 'users' page access can now be granted to a Trainer (see
+  // PERMISSION_PAGES), so this is no longer implicitly admin-only —
+  // creating/editing an ADMIN account specifically still is, otherwise a
+  // Trainer granted 'users' access could hand themselves (or an
+  // accomplice) full admin rights.
+  private ensureNotEscalatingToAdmin(
+    callerRole: string | undefined,
+    targetRole: string | undefined,
+  ) {
+    if (
+      targetRole === 'admin' &&
+      callerRole !== 'admin'
+    ) {
+      throw new ForbiddenException(
+        'Only an administrator can create or modify an admin account',
+      );
+    }
+  }
+
   async createUser(
     createUserDto: CreateUserDto,
+    callerRole?: string,
   ) {
+    this.ensureNotEscalatingToAdmin(
+      callerRole,
+      createUserDto.role,
+    );
+
     const email =
       createUserDto.email
         .toLowerCase()
@@ -142,6 +168,7 @@ export class UsersService {
     id: string,
     updateUserDto:
       UpdateUserDto,
+    callerRole?: string,
   ) {
     const user =
       await this.userModel.findById(
@@ -153,6 +180,18 @@ export class UsersService {
         'User not found',
       );
     }
+
+    // Covers both directions: editing an account that's already an admin,
+    // and promoting a trainer to admin via this same request.
+    this.ensureNotEscalatingToAdmin(
+      callerRole,
+      user.role,
+    );
+
+    this.ensureNotEscalatingToAdmin(
+      callerRole,
+      updateUserDto.role,
+    );
 
     if (updateUserDto.email) {
       const email =
@@ -241,6 +280,7 @@ export class UsersService {
 
   async deleteUser(
     id: string,
+    callerRole?: string,
   ) {
     const user =
       await this.userModel.findById(
@@ -252,6 +292,11 @@ export class UsersService {
         'User not found',
       );
     }
+
+    this.ensureNotEscalatingToAdmin(
+      callerRole,
+      user.role,
+    );
 
     await this.userModel.deleteOne({
       _id: id,

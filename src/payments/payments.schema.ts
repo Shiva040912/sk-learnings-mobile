@@ -5,6 +5,7 @@ import {
 } from '@nestjs/mongoose';
 import {
   HydratedDocument,
+  Schema as MongooseSchema,
   Types,
 } from 'mongoose';
 
@@ -13,12 +14,35 @@ export type PaymentDocument =
 
 @Schema({ timestamps: true })
 export class Payment {
+  // MongooseSchema.Types.ObjectId (not Types.ObjectId — a different
+  // reference in this Mongoose version, unrecognized by the schema type
+  // registry) is required here or Mongoose silently treats the path as
+  // Mixed: no casting, so a plain id string and a real ObjectId both get
+  // stored as whatever was passed in, and later queries stop reliably
+  // matching older records.
   @Prop({
-    type: Types.ObjectId,
+    type: MongooseSchema.Types.ObjectId,
     ref: 'Student',
     required: true,
   })
   studentId!: Types.ObjectId;
+
+  // Which fee cycle this collection belongs to — the hard boundary that
+  // keeps history and balances from ever mixing across cycles. `cycleNumber`
+  // is denormalized purely so the frontend can group/label history without
+  // an extra lookup.
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'FeeCycle',
+    required: true,
+  })
+  feeCycleId!: Types.ObjectId;
+
+  @Prop({
+    required: true,
+    min: 1,
+  })
+  cycleNumber!: number;
 
   @Prop({
     required: true,

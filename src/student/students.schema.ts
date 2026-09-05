@@ -3,7 +3,11 @@ import {
   Schema,
   SchemaFactory,
 } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import {
+  HydratedDocument,
+  Schema as MongooseSchema,
+  Types,
+} from 'mongoose';
 
 export type StudentDocument =
   HydratedDocument<Student>;
@@ -64,35 +68,54 @@ export class Student {
   @Prop({ trim: true })
   address?: string;
 
+  // Fee amounts are no longer set at student creation/edit — a student
+  // starts with none of these set at all (the "no fee generated yet, show
+  // +" state). They exist here only as a read-mostly mirror of whichever
+  // FeeCycle `activeFeeCycleId` points to, kept in sync by
+  // PaymentsService.generateFeeCycle()/collectFeeCyclePayment() alone, so
+  // every other reader of Student (the students table, the reminder
+  // scheduler, permission-based fee stripping) keeps working unchanged.
+  // The FeeCycle collection is the real source of truth and the only place
+  // balances are computed from.
   @Prop({
-    required: true,
     min: 0,
   })
-  totalFee!: number;
+  totalFee?: number;
 
   @Prop({
-    default: 0,
     min: 0,
   })
-  paidAmount!: number;
+  paidAmount?: number;
 
   @Prop({
-    required: true,
     min: 0,
   })
-  pendingAmount!: number;
+  pendingAmount?: number;
 
   @Prop({
     enum: ['unpaid', 'partial', 'paid'],
-    default: 'unpaid',
   })
-  paymentStatus!: 'unpaid' | 'partial' | 'paid';
+  paymentStatus?: 'unpaid' | 'partial' | 'paid';
 
   @Prop({
     enum: ['cash', 'bank', 'upi', 'qr'],
     default: null,
   })
   paymentMethod?: 'cash' | 'bank' | 'upi' | 'qr';
+
+  // Points at the FeeCycle currently being paid off — null/undefined means
+  // this student has never had a fee generated (the Payment page's Status
+  // column shows just "+"). Only ever set by generateFeeCycle(); a fully
+  // paid cycle stays "active" (for history/mirror purposes) until the next
+  // one is generated.
+  // MongooseSchema.Types.ObjectId, not Types.ObjectId — see the note in
+  // payments.schema.ts for why the distinction matters here.
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'FeeCycle',
+    default: null,
+  })
+  activeFeeCycleId?: Types.ObjectId | null;
 
   @Prop({ default: '' })
   paymentProofImage?: string;

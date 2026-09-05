@@ -14,15 +14,43 @@ export interface PageCatalogEntry {
 export const PERMISSION_PAGES = {
   students: {
     label: 'Students',
-    actions: ['view', 'add', 'edit', 'delete'],
-    columns: ['name', 'rollNo', 'phone', 'course', 'totalFee'],
-    sections: ['identityDetails', 'feeInfo'],
+    actions: ['add', 'edit', 'delete'],
+    columns: ['name', 'rollNo', 'course', 'phone'],
+    // Student Details popup fields — deliberately separate from `columns`
+    // (the table). Student Name / Roll No / Course are always visible in
+    // the popup and are not listed here at all.
+    sections: ['address', 'phoneNumber', 'aadhar'],
   },
   payments: {
     label: 'Payments',
-    actions: ['view', 'collect', 'viewDetails'],
-    columns: ['name', 'rollNo', 'phone', 'course', 'totalFee', 'status'],
+    // 'editFee' gates Add Fee / Edit Fee (generating a fee cycle and
+    // correcting the active one). 'proofNotification' gates the red
+    // "new screenshot waiting" dot on the Proof column.
+    actions: ['view', 'collect', 'viewDetails', 'editFee', 'proofNotification'],
+    columns: ['name', 'rollNo', 'phone', 'course', 'totalFee', 'status', 'proof'],
     sections: ['summary', 'feeBreakdown'],
+  },
+  // Manages other accounts (create/edit/delete Trainers, and — for a
+  // Trainer explicitly granted this — other Trainers too). See
+  // UsersService for the one hard rule this doesn't relax: touching an
+  // existing admin account, or creating a new one, always still requires
+  // the caller to actually be an admin, regardless of this permission.
+  users: {
+    label: 'Users',
+    actions: ['add', 'edit', 'delete'],
+    columns: [],
+    sections: [],
+  },
+  // The standalone Settings page (Course & Batch, Payment, Reminders
+  // tabs). Payment/due-date settings are also surfaced on the Payments
+  // page itself and stay gated by 'payments' access there, not this flag
+  // — this only gates the dedicated Settings page and its Trainer-facing
+  // sidebar link.
+  settings: {
+    label: 'Settings',
+    actions: [],
+    columns: [],
+    sections: [],
   },
 } as const satisfies Record<string, PageCatalogEntry>;
 
@@ -33,6 +61,23 @@ export const PAGE_KEYS = Object.keys(
   PERMISSION_PAGES,
 ) as PageKey[];
 
+// Permissions that aren't scoped to a single page — "Fees" controls whether
+// fee-related data (amounts, balances, fee cards/columns/sections) is
+// visible anywhere in the app. Today that's just the Students page; the
+// same flag will gate the Payments page once that's built, so it lives
+// here rather than nested under `students`.
+export const GLOBAL_PERMISSIONS = {
+  fees: {
+    label: 'Fees',
+  },
+} as const;
+
+export type GlobalKey = keyof typeof GLOBAL_PERMISSIONS;
+
+export const GLOBAL_KEYS = Object.keys(
+  GLOBAL_PERMISSIONS,
+) as GlobalKey[];
+
 export interface PagePermission {
   access: boolean;
   actions: Record<string, boolean>;
@@ -40,7 +85,8 @@ export interface PagePermission {
   sections: Record<string, boolean>;
 }
 
-export type PermissionsMap = Record<PageKey, PagePermission>;
+export type PermissionsMap = Record<PageKey, PagePermission> &
+  Record<GlobalKey, boolean>;
 
 function buildPage(
   page: PageKey,
@@ -61,22 +107,36 @@ function buildPage(
   };
 }
 
-export function buildFullAccessPermissions(): PermissionsMap {
+function buildGlobalFlags(
+  value: boolean,
+): Record<GlobalKey, boolean> {
   return Object.fromEntries(
-    PAGE_KEYS.map((page) => [
-      page,
-      buildPage(page, true),
-    ]),
-  ) as PermissionsMap;
+    GLOBAL_KEYS.map((key) => [key, value]),
+  ) as Record<GlobalKey, boolean>;
+}
+
+export function buildFullAccessPermissions(): PermissionsMap {
+  return {
+    ...buildGlobalFlags(true),
+    ...Object.fromEntries(
+      PAGE_KEYS.map((page) => [
+        page,
+        buildPage(page, true),
+      ]),
+    ),
+  } as PermissionsMap;
 }
 
 export function buildEmptyPermissions(): PermissionsMap {
-  return Object.fromEntries(
-    PAGE_KEYS.map((page) => [
-      page,
-      buildPage(page, false),
-    ]),
-  ) as PermissionsMap;
+  return {
+    ...buildGlobalFlags(false),
+    ...Object.fromEntries(
+      PAGE_KEYS.map((page) => [
+        page,
+        buildPage(page, false),
+      ]),
+    ),
+  } as PermissionsMap;
 }
 
 // Mirrors exactly what every Trainer could already do before this
@@ -84,10 +144,12 @@ export function buildEmptyPermissions(): PermissionsMap {
 // `permissions` payload, and any trainer saved before this feature shipped,
 // get this preset so behavior never silently changes.
 export const LEGACY_TRAINER_PERMISSIONS: PermissionsMap = {
+  // Matches the old students.sections.feeInfo default (off) this global
+  // flag replaces — legacy trainers didn't see fee data, so they still don't.
+  fees: false,
   students: {
     access: true,
     actions: {
-      view: true,
       add: false,
       edit: false,
       delete: false,
@@ -95,13 +157,13 @@ export const LEGACY_TRAINER_PERMISSIONS: PermissionsMap = {
     columns: {
       name: true,
       rollNo: true,
-      phone: true,
       course: true,
-      totalFee: false,
+      phone: true,
     },
     sections: {
-      identityDetails: true,
-      feeInfo: false,
+      address: true,
+      phoneNumber: true,
+      aadhar: true,
     },
   },
   payments: {
@@ -110,6 +172,13 @@ export const LEGACY_TRAINER_PERMISSIONS: PermissionsMap = {
       view: true,
       collect: true,
       viewDetails: false,
+      // New actions: default off. Legacy trainers already couldn't do
+      // either of these (fee editing rode on 'collect' before it had its
+      // own permission, and no trainer ever saw the proof notification
+      // dot), so 'false' here is a no-op for existing accounts, not a
+      // new restriction.
+      editFee: false,
+      proofNotification: false,
     },
     columns: {
       name: true,
@@ -118,11 +187,35 @@ export const LEGACY_TRAINER_PERMISSIONS: PermissionsMap = {
       course: true,
       totalFee: false,
       status: true,
+      // Matches the Proof column's previous behavior — it was always
+      // rendered, ungated by any permission, so 'true' here preserves
+      // exactly what legacy trainers could already see.
+      proof: true,
     },
     sections: {
       summary: false,
       feeBreakdown: false,
     },
+  },
+  // Both new pages default fully off — legacy trainers never had a Users
+  // or Settings link before, so 'false' here is a no-op, not a new
+  // restriction. An admin explicitly opts a Trainer into either from the
+  // Users page.
+  users: {
+    access: false,
+    actions: {
+      add: false,
+      edit: false,
+      delete: false,
+    },
+    columns: {},
+    sections: {},
+  },
+  settings: {
+    access: false,
+    actions: {},
+    columns: {},
+    sections: {},
   },
 };
 
@@ -146,6 +239,10 @@ export function sanitizePermissions(
       : {};
 
   const result = {} as PermissionsMap;
+
+  for (const key of GLOBAL_KEYS) {
+    result[key] = raw[key] === true;
+  }
 
   for (const page of PAGE_KEYS) {
     const catalog = PERMISSION_PAGES[page];

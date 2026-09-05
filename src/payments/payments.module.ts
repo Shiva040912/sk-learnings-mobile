@@ -12,6 +12,11 @@ import {
 } from './payments-settings.schema';
 
 import {
+  FeeCycle,
+  FeeCycleSchema,
+} from './fee-cycle.schema';
+
+import {
   Student,
   StudentSchema,
 } from '../student/students.schema';
@@ -33,6 +38,10 @@ import { PermissionsModule } from '../permissions/permissions.module';
       {
         name: PaymentSetting.name,
         schema: PaymentSettingSchema,
+      },
+      {
+        name: FeeCycle.name,
+        schema: FeeCycleSchema,
       },
       {
         name: Student.name,
